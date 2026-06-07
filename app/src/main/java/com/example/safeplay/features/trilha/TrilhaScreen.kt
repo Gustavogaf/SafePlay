@@ -23,11 +23,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.safeplay.R
+import com.example.safeplay.core.navigation.Rotas
 import com.example.safeplay.data.model.ModuloComProgresso
 import com.example.safeplay.data.model.Modulos
 
 @Composable
-fun TrilhaScreen(viewModel: TrilhaViewModel = viewModel()) {
+fun TrilhaScreen(navController: androidx.navigation.NavController, viewModel: TrilhaViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsState()
 
     Scaffold(
@@ -99,7 +100,10 @@ fun TrilhaScreen(viewModel: TrilhaViewModel = viewModel()) {
                             onClick = {
                                 // Bloqueia o clique se não estiver liberado
                                 if (statusVisual != "BLOQUEADO") {
-                                    /* TODO: Navegar passando o modulo.id para o Quiz */
+                                    Modifier.clickable {
+                                        // Quando clicar no módulo, navega passando o ID real daquele módulo no banco
+                                        navController.navigate(Rotas.criarRotaQuiz(modulo.id_modulo))
+                                    }
                                 }
                             }
                         )

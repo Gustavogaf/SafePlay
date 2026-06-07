@@ -1,11 +1,14 @@
 package com.example.safeplay.core.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.example.safeplay.features.auth.AuthScreen
 import com.example.safeplay.features.auth.RegisterScreen
+import com.example.safeplay.features.desafio.QuizScreen
 import com.example.safeplay.features.educador.DashboardEducadorScreen
 import com.example.safeplay.features.educador.CriarTurmaScreen
 import com.example.safeplay.features.trilha.TrilhaScreen
@@ -19,6 +22,9 @@ object Rotas {
     const val TRILHA_ALUNO = "trilha_aluno"
     const val DASHBOARD_EDUCADOR = "dashboard_educador"
     const val CRIAR_TURMA = "criar_turma"
+
+    const val QUIZ = "quiz/{idModulo}"
+    fun criarRotaQuiz(idModulo: String) = "quiz/$idModulo"
 }
 
 @Composable
@@ -79,7 +85,23 @@ fun SafePlayNavigation() {
         // 3. ROTAS FUTURAS (Espaços reservados para os próximos ecrãs)
         composable(Rotas.TRILHA_ALUNO) {
                 // Chamamos o ecrã real da Trilha
-                TrilhaScreen()
+                TrilhaScreen(navController = navController)
+        }
+        // Certifique-se de importar androidx.navigation.navArgument e androidx.navigation.NavType
+        composable(
+            route = Rotas.QUIZ,
+            arguments = listOf(navArgument("idModulo") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val idModulo = backStackEntry.arguments?.getString("idModulo")
+                ?: return@composable // Segurança: se vier vazio, não faz nada
+
+            QuizScreen(
+                idModulo = idModulo,
+                onVoltarParaTrilha = {
+                    // Quando o aluno terminar ou fechar, voltamos para o mapa
+                    navController.popBackStack()
+                }
+            )
         }
 
 
