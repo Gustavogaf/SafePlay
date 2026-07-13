@@ -16,7 +16,12 @@ import kotlinx.coroutines.launch
 
 sealed class TrilhaState {
     object Loading : TrilhaState()
-    data class Success(val modulos: List<ModuloComProgresso>) : TrilhaState()
+    // Adicionado os parâmetros de pontuação e nível no estado de sucesso
+    data class Success(
+        val modulos: List<ModuloComProgresso>,
+        val pontuacaoTotal: Int,
+        val nivelAtual: Int
+    ) : TrilhaState()
     data class Error(val message: String) : TrilhaState()
 }
 
@@ -26,10 +31,11 @@ class TrilhaViewModel : ViewModel() {
     val uiState: StateFlow<TrilhaState> = _uiState.asStateFlow()
 
     init {
-        carregarTrilha()
+        atualizarTrilha()
     }
 
-    private fun carregarTrilha() {
+    // Transformado em método público para ser chamado sempre que a tela ganhar foco
+    fun atualizarTrilha() {
         viewModelScope.launch {
             try {
                 // 1. Pega o ID do aluno que está logado
@@ -46,7 +52,15 @@ class TrilhaViewModel : ViewModel() {
                     .select { filter { eq("id_aluno", userId) } }
                     .decodeList<ProgressoAluno>()
 
-                // 4. Junta as informações
+                // 4. Lógica de Gamificação: Calcular Pontuação e Nível
+                // Soma todos os pontos obtidos até o momento (tratando null como 0)
+                val pontuacaoAcumulada = progressos.sumOf { it.pontuacao_obtida ?: 0 }
+
+                // O nível do aluno será equivalente à quantidade de módulos concluídos + 1
+                val modulosConcluidos = progressos.count { it.status == "Concluído" }
+                val nivelDoAluno = modulosConcluidos + 1
+
+                // 5. Junta as informações
                 val trilhaDoAluno = modulos.map { modulo ->
                     val progressoDesteModulo = progressos.find { it.id_modulo == modulo.id_modulo }
 
@@ -58,11 +72,13 @@ class TrilhaViewModel : ViewModel() {
                     )
                 }
 
-                _uiState.value = TrilhaState.Success(trilhaDoAluno)
+                _uiState.value = TrilhaState.Success(
+                    modulos = trilhaDoAluno,
+                    pontuacaoTotal = pontuacaoAcumulada,
+                    nivelAtual = nivelDoAluno
+                )
 
             } catch (e: Exception) {
-                // CORREÇÃO: Apenas atualizamos o estado com e.message.
-                // A TrilhaScreen já está configurada para exibir esta mensagem.
                 _uiState.value = TrilhaState.Error(e.message ?: "Erro desconhecido ao carregar trilha")
             }
         }

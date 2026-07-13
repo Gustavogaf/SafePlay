@@ -26,7 +26,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 fun RegisterScreen(
     viewModel: AuthViewModel = viewModel(),
     onNavigateBack: () -> Unit = {},
-    onRegisterSuccess: (String) -> Unit = {} // Novo evento para sucesso!
+    onRegisterSuccess: (destino: String) -> Unit = {} // Novo evento para sucesso!
 ) {
     var isAluno by remember { mutableStateOf(true) }
     var nomeText by remember { mutableStateOf("") }
@@ -40,7 +40,7 @@ fun RegisterScreen(
     // Reage ao sucesso automaticamente
     LaunchedEffect(authState) {
         if (authState is AuthState.Success) {
-            onRegisterSuccess((authState as AuthState.Success).role)
+            onRegisterSuccess((authState as AuthState.Success).destino)
         }
     }
 

@@ -25,11 +25,25 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.safeplay.R
 import com.example.safeplay.core.navigation.Rotas
 import com.example.safeplay.data.model.ModuloComProgresso
-import com.example.safeplay.data.model.Modulos
 
 @Composable
 fun TrilhaScreen(navController: androidx.navigation.NavController, viewModel: TrilhaViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsState()
+
+    // Gatilho essencial: Sempre que retornar para esta tela, obriga a re-consulta ao banco
+    LaunchedEffect(Unit) {
+        viewModel.atualizarTrilha()
+    }
+
+    // Variáveis de estado para alimentar o cabeçalho de forma segura
+    var pontuacaoExibida = 0
+    var nivelExibido = 1
+
+    if (uiState is TrilhaState.Success) {
+        val successState = uiState as TrilhaState.Success
+        pontuacaoExibida = successState.pontuacaoTotal
+        nivelExibido = successState.nivelAtual
+    }
 
     Scaffold(
         bottomBar = { SafePlayBottomNavigation() }
@@ -37,13 +51,13 @@ fun TrilhaScreen(navController: androidx.navigation.NavController, viewModel: Tr
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFF7F9FC)) // Cor de fundo mais clara do PDF
+                .background(Color(0xFFF7F9FC))
                 .padding(paddingValues)
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // CABEÇALHO (Avatar, Logo, Nível)
-            CabecalhoTrilha()
+            // CABEÇALHO (Agora recebe os dados dinâmicos)
+            CabecalhoTrilha(pontuacao = pontuacaoExibida, nivel = nivelExibido)
 
             // CARTÃO DE BOAS VINDAS
             Card(
@@ -81,34 +95,24 @@ fun TrilhaScreen(navController: androidx.navigation.NavController, viewModel: Tr
                 is TrilhaState.Success -> {
                     val modulos = (uiState as TrilhaState.Success).modulos
 
-                    // Renderiza de baixo para cima
                     modulos.reversed().forEachIndexed { index, modulo ->
-                        // Lógica temporária de visual (No futuro virá do banco de dados do progresso do utilizador)
                         val statusVisual = when (modulo.status) {
                             "Concluído" -> "CONCLUIDO"
                             "Em Andamento" -> "ATUAL"
                             else -> "BLOQUEADO"
                         }
 
-                        // Zigue-zague: Se for par vai para a esquerda, se ímpar vai para a direita
                         val deslocamentoX = if (modulo.ordem_trilha % 2 == 0) (-40).dp else 40.dp
 
                         FaseNodeDesign(
-                            fase = modulo, // Passa o objeto inteiro
+                            fase = modulo,
                             status = statusVisual,
                             deslocamentoX = deslocamentoX,
                             onClick = {
-                                // Bloqueia o clique se não estiver liberado
-                                if (statusVisual != "BLOQUEADO") {
-                                    Modifier.clickable {
-                                        // Quando clicar no módulo, navega passando o ID real daquele módulo no banco
-                                        navController.navigate(Rotas.criarRotaQuiz(modulo.id_modulo))
-                                    }
-                                }
+                                navController.navigate(Rotas.criarRotaQuiz(modulo.id_modulo))
                             }
                         )
 
-                        // Linha conectora (simplificada)
                         if (index < modulos.size - 1) {
                             Box(
                                 modifier = Modifier
@@ -125,8 +129,9 @@ fun TrilhaScreen(navController: androidx.navigation.NavController, viewModel: Tr
     }
 }
 
+// O cabeçalho agora exige que os valores venham do banco de dados!
 @Composable
-fun CabecalhoTrilha() {
+fun CabecalhoTrilha(pontuacao: Int, nivel: Int) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -136,10 +141,8 @@ fun CabecalhoTrilha() {
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Avatar (Placeholder)
             Box(modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.LightGray))
             Spacer(modifier = Modifier.width(12.dp))
-            // Logo app (Placeholder)
             Box(modifier = Modifier.size(32.dp).background(Color(0xFF0D1B2A), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
                 Image(
                     painter = painterResource(id = R.drawable.safeplay_logo),
@@ -149,7 +152,6 @@ fun CabecalhoTrilha() {
             }
         }
 
-        // Emblema de Pontos
         Card(
             shape = RoundedCornerShape(50),
             colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F4F8))
@@ -157,7 +159,8 @@ fun CabecalhoTrilha() {
             Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFF5722), modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Nível 5 • 1,250 pts", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                // Aqui injetamos os dados vivos:
+                Text("Nível $nivel • $pontuacao pts", fontWeight = FontWeight.Bold, fontSize = 14.sp)
             }
         }
     }
@@ -165,10 +168,9 @@ fun CabecalhoTrilha() {
 
 @Composable
 fun FaseNodeDesign(fase: ModuloComProgresso, status: String, deslocamentoX: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
-    // Definir as cores com base no design
     val corCirculo = when (status) {
-        "CONCLUIDO" -> if (fase.ordem_trilha == 1) Color(0xFFD84315) else Color(0xFF6200EA) // Laranja e Roxo do PDF
-        "ATUAL" -> Color(0xFF0056D2) // Azul forte
+        "CONCLUIDO" -> if (fase.ordem_trilha == 1) Color(0xFFD84315) else Color(0xFF6200EA)
+        "ATUAL" -> Color(0xFF0056D2)
         else -> Color.Transparent
     }
 
@@ -176,22 +178,22 @@ fun FaseNodeDesign(fase: ModuloComProgresso, status: String, deslocamentoX: andr
         1 -> Icons.Default.VpnKey
         2 -> Icons.Default.Security
         3 -> Icons.Default.HourglassEmpty
+        4 -> Icons.Default.AdminPanelSettings
+        5 -> Icons.Default.ManageSearch
         else -> Icons.Default.Lock
     }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(140.dp), // Espaço para caber o círculo e a pílula
+            .height(140.dp),
         contentAlignment = Alignment.Center
     ) {
-        // Todo o bloco do botão deslocado para fazer o Zigue-Zague
         Box(
             modifier = Modifier.offset(x = deslocamentoX),
             contentAlignment = Alignment.Center
         ) {
 
-            // As estrelas ao lado se estiver concluído
             if (status == "CONCLUIDO") {
                 Column(modifier = Modifier.offset(x = (-70).dp)) {
                     Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFD84315), modifier = Modifier.size(16.dp))
@@ -200,7 +202,6 @@ fun FaseNodeDesign(fase: ModuloComProgresso, status: String, deslocamentoX: andr
                 }
             }
 
-            // O Círculo Principal
             Box(
                 modifier = Modifier
                     .size(90.dp)
@@ -218,14 +219,13 @@ fun FaseNodeDesign(fase: ModuloComProgresso, status: String, deslocamentoX: andr
                 )
             }
 
-            // A Pílula com o Título (Sobreposta na parte inferior do círculo)
             Card(
                 shape = RoundedCornerShape(50),
                 colors = CardDefaults.cardColors(containerColor = if (status == "BLOQUEADO") Color(0xFFE8ECEF) else Color.White),
                 elevation = CardDefaults.cardElevation(defaultElevation = if (status == "BLOQUEADO") 0.dp else 4.dp),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .offset(y = 20.dp) // Puxa o cartão para baixo para sobrepor a borda do círculo
+                    .offset(y = 20.dp)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -244,7 +244,6 @@ fun FaseNodeDesign(fase: ModuloComProgresso, status: String, deslocamentoX: andr
                 }
             }
 
-            // O Emblema "START" (Sobreposto na parte superior)
             if (status == "ATUAL") {
                 Card(
                     shape = RoundedCornerShape(50),
@@ -265,14 +264,14 @@ fun SafePlayBottomNavigation() {
     var itemSelecionado by remember { mutableStateOf(0) }
     NavigationBar(containerColor = Color.White, tonalElevation = 8.dp) {
         NavigationBarItem(
-            icon = { Icon(Icons.Default.Map, contentDescription = "Início") }, // Ícone atualizado para mapa
+            icon = { Icon(Icons.Default.Map, contentDescription = "Início") },
             label = { Text("Início", fontWeight = FontWeight.Bold) },
             selected = itemSelecionado == 0,
             onClick = { itemSelecionado = 0 },
             colors = NavigationBarItemDefaults.colors(selectedIconColor = MaterialTheme.colorScheme.primary, indicatorColor = Color(0xFFE3F2FD))
         )
         NavigationBarItem(
-            icon = { Icon(Icons.Default.BarChart, contentDescription = "Ranking") }, // Ícone atualizado
+            icon = { Icon(Icons.Default.BarChart, contentDescription = "Ranking") },
             label = { Text("Ranking", fontWeight = FontWeight.Bold) },
             selected = itemSelecionado == 1,
             onClick = { itemSelecionado = 1 }

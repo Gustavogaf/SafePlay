@@ -5,28 +5,29 @@ import androidx.lifecycle.viewModelScope
 import com.example.safeplay.data.model.quiz.Alternativa
 import com.example.safeplay.data.model.quiz.Desafio
 import com.example.safeplay.data.repository.QuizRepository
+import com.example.safeplay.data.network.SupabaseClient
+import io.github.jan.supabase.gotrue.auth
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-// Estado completo da tela de Quiz
 sealed class QuizState {
     object Loading : QuizState()
     data class Error(val message: String) : QuizState()
-
-    // O estado ativo do jogo
     data class Playing(
         val desafioAtual: Desafio,
-        val alternativas: List<Alternativa> = emptyList(), // Só preenchido se for múltipla escolha
+        val alternativas: List<Alternativa> = emptyList(),
         val indiceAtual: Int,
         val totalDesafios: Int,
         val pontuacaoAcumulada: Int,
-        val mostrarDicaErro: Boolean = false // Controla se a dica pedagógica deve aparecer
+        val mostrarDicaErro: Boolean = false
     ) : QuizState()
-
-    // Estado final quando acaba o módulo
-    data class Finished(val pontuacaoFinal: Int) : QuizState()
+    data class Finished(
+        val pontuacaoFinal: Int,
+        val tituloModulo: String,
+        val iconeMedalhaUrl: String?
+    ) : QuizState()
 }
 
 class QuizViewModel(
@@ -36,17 +37,17 @@ class QuizViewModel(
     private val _uiState = MutableStateFlow<QuizState>(QuizState.Loading)
     val uiState: StateFlow<QuizState> = _uiState.asStateFlow()
 
-    // Variáveis internas para controlar o fluxo
     private var listaDesafios: List<Desafio> = emptyList()
+    private var idModuloAtual: String = ""
     private var indiceAtual = 0
     private var pontuacao = 0
+    private var errosDesafioAtual = 0
+    private var totalTentativasModulo = 0 // Controla o acumulado de submissões do módulo
 
-    /**
-     * Inicia o jogo carregando todos os desafios daquele módulo.
-     */
     fun iniciarQuiz(idModulo: String) {
         viewModelScope.launch {
             _uiState.value = QuizState.Loading
+            idModuloAtual = idModulo
 
             val resultado = repository.buscarDesafiosPorModulo(idModulo)
 
@@ -60,6 +61,8 @@ class QuizViewModel(
                     listaDesafios = desafios
                     indiceAtual = 0
                     pontuacao = 0
+                    errosDesafioAtual = 0
+                    totalTentativasModulo = 0
 
                     carregarDesafioAtual()
                 },
@@ -70,21 +73,48 @@ class QuizViewModel(
         }
     }
 
-    /**
-     * Prepara a tela para o desafio atual. Se for múltipla escolha, busca as alternativas.
-     */
     private suspend fun carregarDesafioAtual() {
         if (indiceAtual >= listaDesafios.size) {
-            // Se já passámos de todos os desafios, o módulo terminou!
-            _uiState.value = QuizState.Finished(pontuacao)
+            // O módulo acabou! Gravamos os dados consolidados no Supabase antes de ir para a tela final
+            try {
+                val userId = SupabaseClient.client.auth.currentUserOrNull()?.id
+                    ?: throw Exception("Utilizador não autenticado.")
+
+                val resultadoPersistencia = repository.finalizarModuloEDesbloquearProximo(
+                    idModuloAtual = idModuloAtual,
+                    idAluno = userId,
+                    pontuacaoFinal = pontuacao,
+                    totalTentativas = totalTentativasModulo
+                )
+
+                repository.finalizarModuloEDesbloquearProximo(
+                    idModuloAtual = idModuloAtual,
+                    idAluno = userId,
+                    pontuacaoFinal = pontuacao,
+                    totalTentativas = totalTentativasModulo
+                ).fold(
+                    onSuccess = { dadosModulo ->
+                        // Passa os dados obtidos do banco diretamente para o estado final da View
+                        _uiState.value = QuizState.Finished(
+                            pontuacaoFinal = pontuacao,
+                            tituloModulo = dadosModulo.first,
+                            iconeMedalhaUrl = dadosModulo.second
+                        )
+                    },
+                    onFailure = { erro ->
+                        _uiState.value = QuizState.Error("Erro ao salvar progresso no banco: ${erro.message}")
+                    }
+                )
+            } catch (e: Exception) {
+                _uiState.value = QuizState.Error(e.message ?: "Erro ao processar finalização do módulo.")
+            }
             return
         }
 
         val desafio = listaDesafios[indiceAtual]
 
         if (desafio.tipo_dinamica == "quiz_multipla_escolha") {
-            // Busca as alternativas específicas deste desafio
-            val resultadoAlternativas = repository.buscarAlternativasPorDesafio(desafio.id)
+            val resultadoAlternativas = repository.buscarAlternativasPorDesafio(desafio.id_desafio)
 
             resultadoAlternativas.fold(
                 onSuccess = { alternativas ->
@@ -101,7 +131,6 @@ class QuizViewModel(
                 }
             )
         } else {
-            // Se for Drag & Drop, os dados já vieram no JSONB (regras_validacao), não precisa de nova query
             _uiState.value = QuizState.Playing(
                 desafioAtual = desafio,
                 indiceAtual = indiceAtual + 1,
@@ -111,9 +140,6 @@ class QuizViewModel(
         }
     }
 
-    /**
-     * Recebe o mapa do aluno (id_item -> nome_da_zona) e cruza com o JSONB do Supabase.
-     */
     fun validarRespostaDragAndDrop(alocacaoDoAluno: Map<String, String?>) {
         val currentState = _uiState.value
         if (currentState !is QuizState.Playing) return
@@ -125,19 +151,14 @@ class QuizViewModel(
         }
 
         var todasCorretas = true
-
-        // Percorre todos os itens interativos do desafio atual
         for (item in regras.itens_interativos) {
             val zonaEscolhidaPeloAluno = alocacaoDoAluno[item.id]
-
             if (item.alvo_correto != null) {
-                // É um item válido: o aluno TINHA que colocá-lo na zona certa
                 if (zonaEscolhidaPeloAluno != item.alvo_correto) {
                     todasCorretas = false
-                    break // Se errou um, já perde a jogada
+                    break
                 }
             } else {
-                // É um distrator (ex: "App Pirata"): não deve ser colocado em zona nenhuma!
                 if (zonaEscolhidaPeloAluno != null) {
                     todasCorretas = false
                     break
@@ -145,35 +166,49 @@ class QuizViewModel(
             }
         }
 
-        // Chama a função existente que soma os pontos ou exibe o pop-up de erro
         processarResposta(isCorreta = todasCorretas)
     }
-    /**
-     * Chamado pela UI quando o aluno valida uma resposta.
-     */
+
+    fun validarRespostaMultiplaEscolha(idAlternativa: String) {
+        val currentState = _uiState.value
+        if (currentState !is QuizState.Playing) return
+
+        val alternativaSelecionada = currentState.alternativas.find { it.id_alternativa == idAlternativa }
+
+        if (alternativaSelecionada != null) {
+            processarResposta(isCorreta = alternativaSelecionada.is_correta)
+        } else {
+            _uiState.value = QuizState.Error("Erro: Alternativa não encontrada.")
+        }
+    }
+
     fun processarResposta(isCorreta: Boolean) {
         val currentState = _uiState.value
         if (currentState !is QuizState.Playing) return
 
+        totalTentativasModulo++ // Conta a tentativa global do módulo
+
         if (isCorreta) {
-            // Acertou! Soma os pontos e avança para o próximo.
-            pontuacao += currentState.desafioAtual.pontos_valendo
+            val limiteErros = minOf(errosDesafioAtual, 2)
+            val percentualDesconto = limiteErros * 0.05
+
+            val pontosBase = currentState.desafioAtual.pontos_valendo
+            val pontosDescontados = (pontosBase * percentualDesconto).toInt()
+            val pontosFinais = pontosBase - pontosDescontados
+
+            pontuacao += pontosFinais
             indiceAtual++
+            errosDesafioAtual = 0
 
             viewModelScope.launch {
                 carregarDesafioAtual()
             }
         } else {
-            // Errou! Exibe a dica pedagógica.
+            errosDesafioAtual++
             _uiState.value = currentState.copy(mostrarDicaErro = true)
-
-            // Aqui você pode decidir se quer descontar pontos ou vidas no futuro
         }
     }
 
-    /**
-     * Chamado pela UI para esconder a dica de erro e tentar novamente.
-     */
     fun tentarNovamente() {
         val currentState = _uiState.value
         if (currentState is QuizState.Playing) {

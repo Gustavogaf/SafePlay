@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class Desafio(
-    val id: String, // Ajuste para Int se o ID no seu banco for numérico
+    val id_desafio: String, // Ajuste para Int se o ID no seu banco for numérico
     val id_modulo: String,
     val contexto: String,
     val pergunta: String,

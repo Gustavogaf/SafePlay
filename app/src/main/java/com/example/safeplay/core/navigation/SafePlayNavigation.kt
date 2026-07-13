@@ -42,13 +42,24 @@ fun SafePlayNavigation() {
                     // Vai para o ecrã de registo
                     navController.navigate(Rotas.REGISTO)
                 },
-                onLoginSuccess = { papel ->
-                    // Regra de Negócio: Se for aluno, vai para a Trilha. Se for educador, vai para o Painel.
-                    val rotaDestino = if (papel == "aluno") Rotas.ENTRAR_TURMA else Rotas.DASHBOARD_EDUCADOR
-
-                    navController.navigate(rotaDestino) {
-                        // popUpTo garante que o utilizador não consegue voltar ao ecrã de Login ao premir o botão "Voltar" do telemóvel
-                        popUpTo(Rotas.LOGIN) { inclusive = true }
+                onLoginSuccess = { destino ->
+                    // O destino vem do AuthViewModel ("trilha", "entrar_turma", "dashboard_educador")
+                    when (destino) {
+                        "trilha" -> {
+                            navController.navigate(Rotas.TRILHA_ALUNO) {
+                                popUpTo(Rotas.LOGIN) { inclusive = true }
+                            }
+                        }
+                        "entrar_turma" -> {
+                            navController.navigate(Rotas.ENTRAR_TURMA) {
+                                popUpTo(Rotas.LOGIN) { inclusive = true }
+                            }
+                        }
+                        "dashboard_educador" -> {
+                            navController.navigate(Rotas.DASHBOARD_EDUCADOR) {
+                                popUpTo(Rotas.LOGIN) { inclusive = true }
+                            }
+                        }
                     }
                 }
             )
@@ -60,12 +71,18 @@ fun SafePlayNavigation() {
                 onNavigateBack = {
                     navController.popBackStack()
                 },
-                onRegisterSuccess = { papel ->
-                    // Exatamente a mesma lógica de sucesso do Login
-                    val rotaDestino = if (papel == "aluno") Rotas.ENTRAR_TURMA else Rotas.DASHBOARD_EDUCADOR
-
-                    navController.navigate(rotaDestino) {
-                        popUpTo(Rotas.LOGIN) { inclusive = true } // Limpa a pilha para não voltar ao login
+                onRegisterSuccess = {      destino ->
+                    when (destino) {
+                        "entrar_turma" -> {
+                            navController.navigate(Rotas.ENTRAR_TURMA) {
+                                popUpTo(Rotas.LOGIN) { inclusive = true }
+                            }
+                        }
+                        "dashboard_educador" -> {
+                            navController.navigate(Rotas.DASHBOARD_EDUCADOR) {
+                                popUpTo(Rotas.LOGIN) { inclusive = true }
+                            }
+                        }
                     }
                 }
             )

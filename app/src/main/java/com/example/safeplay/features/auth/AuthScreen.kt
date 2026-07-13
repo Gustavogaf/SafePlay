@@ -29,7 +29,7 @@ import com.example.safeplay.R
 fun AuthScreen(
     viewModel: AuthViewModel = viewModel(),
     onNavigateToRegister: () -> Unit = {},
-    onLoginSuccess: (String) -> Unit = {}
+    onLoginSuccess: (destino: String) -> Unit = {}
 ) {
     var isAluno by remember { mutableStateOf(true) }
     var loginText by remember { mutableStateOf("") }
@@ -46,7 +46,8 @@ fun AuthScreen(
     // Reage automaticamente quando o estado do login muda para Success
     LaunchedEffect(authState) {
         if (authState is AuthState.Success) {
-            onLoginSuccess((authState as AuthState.Success).role)
+            val destino = (authState as AuthState.Success).destino
+            onLoginSuccess(destino)
         }
     }
 
@@ -189,14 +190,6 @@ fun AuthScreen(
                 }
 
                 // Exibe mensagem de sucesso temporária (até configurarmos a navegação)
-                if (authState is AuthState.Success) {
-                    Text(
-                        text = "A iniciar como ${(authState as AuthState.Success).role}...",
-                        color = Color(0xFF4CAF50), // Verde sucesso
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                }
 
                 // Botão de Login
                 Button(
